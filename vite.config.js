@@ -8,5 +8,5 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
-  base: './', // เพิ่มคำสั่งนี้เข้ามาเพื่อให้ออนไลน์บน GitHub ได้
+  base: '/inventory-app/',
 })
