@@ -1,40 +1,17 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Store, Package, Calendar, User, 
-  ChevronDown, ChevronUp, PlusCircle, 
-  List, BarChart3, Calculator, FileText,
+  ChevronDown, PlusCircle, 
+  List, BarChart3, FileText,
   Filter, RotateCcw, Edit, Trash2, X, AlertCircle, Check, Info, Loader2
 } from 'lucide-react';
+import { supabase } from './supabaseClient'; // เชื่อมต่อฐานข้อมูลของจริง
 
 const BRANCHES = ['สาขา 1', 'สาขา 2', 'สาขา 3', 'สาขา 4', 'สาขา 5', 'ร้านของชำ'];
 
-// Mock Data แทน Supabase ชั่วคราว เพื่อให้โค้ดรันผ่าน
-const mockRecords = [
-  {
-    id: 1,
-    reporterName: 'สมชาย ใจดี',
-    dateTime: '2026-07-21T09:30',
-    branch: 'สาขา 2',
-    productName: 'นมสดพาสเจอร์ไรส์ 2L',
-    quantity: 2,
-    price: 95,
-    totalValue: 190,
-  },
-  {
-    id: 2,
-    reporterName: 'สมหญิง รักงาน',
-    dateTime: '2026-07-21T14:15',
-    branch: 'สาขา 2',
-    productName: 'ไข่ไก่ เบอร์ 0 (แผง)',
-    quantity: 32,
-    price: 140,
-    totalValue: 647,
-  }
-];
-
 export default function App() {
-  const [records, setRecords] = useState(mockRecords); 
-  const [isLoading, setIsLoading] = useState(false); 
+  const [records, setRecords] = useState([]); 
+  const [isLoading, setIsLoading] = useState(true); 
   const [activeTab, setActiveTab] = useState('summary'); 
   
   // State สำหรับตัวกรอง
@@ -52,46 +29,77 @@ export default function App() {
   const showConfirm = (message, onConfirmCallback) => setDialog({ isOpen: true, type: 'confirm', message, onConfirm: onConfirmCallback });
   const closeDialog = () => setDialog({ isOpen: false, type: '', message: '', onConfirm: null });
 
-  // 1. ฟังก์ชันดึงข้อมูล (ใช้ mock data แทนชั่วคราว)
   useEffect(() => {
-    // ในที่นี้ไม่ต้อง fetch จาก Supabase แล้ว เพื่อให้รันใน preview ได้
+    fetchRecords();
   }, []);
 
-  // 2. ฟังก์ชันบันทึกข้อมูล
+  const fetchRecords = async () => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('records')
+        .select('*')
+        .order('dateTime', { ascending: false });
+
+      if (error) throw error;
+      setRecords(data || []);
+    } catch (error) {
+      console.error('Error fetching records:', error.message);
+      showAlert('เกิดข้อผิดพลาดในการดึงข้อมูล: ' + error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSaveRecord = async (dataArray) => {
     setIsLoading(true);
-    // จำลองการโหลด
-    await new Promise(resolve => setTimeout(resolve, 500));
     try {
-      const recordsToSave = dataArray.map(({ id, tempId, ...rest }) => ({
-        ...rest,
-        id: editingRecord ? editingRecord.id : Date.now() + Math.random()
-      }));
+      // ลบฟิลด์ tempId ออกก่อนส่งไปเซฟ
+      const recordsToSave = dataArray.map(({ id, tempId, ...rest }) => rest);
 
       if (editingRecord) {
-        setRecords(prev => prev.map(r => r.id === editingRecord.id ? recordsToSave[0] : r));
+        const { error } = await supabase
+          .from('records')
+          .update(recordsToSave[0])
+          .eq('id', editingRecord.id);
+        if (error) throw error;
       } else {
-         setRecords(prev => [...recordsToSave, ...prev]);
+        const { error } = await supabase
+          .from('records')
+          .insert(recordsToSave);
+        if (error) throw error;
       }
 
+      await fetchRecords(); 
       setEditingRecord(null);
       setActiveTab('list');
       showAlert('บันทึกข้อมูลเรียบร้อยแล้ว!');
     } catch (error) {
+      console.error('Error saving record:', error.message);
       showAlert('บันทึกข้อมูลไม่สำเร็จ: ' + error.message);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // 3. ฟังก์ชันลบข้อมูล
   const handleDeleteRecord = (id) => {
     showConfirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการนี้? ประวัติจะถูกลบถาวร', async () => {
       closeDialog();
       setIsLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setRecords(prev => prev.filter(r => r.id !== id));
-      setIsLoading(false);
+      try {
+        const { error } = await supabase
+          .from('records')
+          .delete()
+          .eq('id', id);
+
+        if (error) throw error;
+        await fetchRecords();
+      } catch (error) {
+        console.error('Error deleting record:', error.message);
+        showAlert('ลบข้อมูลไม่สำเร็จ: ' + error.message);
+      } finally {
+        setIsLoading(false);
+      }
     });
   };
 
@@ -129,7 +137,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans pb-24 md:pb-10 selection:bg-fuchsia-200">
-      {/* Header - Vibrant Gradient */}
+      {/* Header */}
       <header className="bg-gradient-to-r from-violet-700 via-fuchsia-600 to-pink-500 text-white shadow-lg sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 md:px-5 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -152,7 +160,7 @@ export default function App() {
       {/* Main Content */}
       <main className="max-w-6xl mx-auto p-3 md:p-6 mt-2 md:mt-4 relative">
         
-        {}
+        {/* ตัวกรอง */}
         {(activeTab === 'summary' || activeTab === 'list') && (
           <div className="bg-white/80 backdrop-blur-xl p-4 md:p-5 rounded-2xl md:rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 mb-6 md:mb-8 flex flex-col md:flex-row gap-4 items-start md:items-end transition-all">
             <div className="flex items-center gap-2 md:mb-2 text-violet-700 font-bold w-full md:w-auto">
@@ -204,7 +212,7 @@ export default function App() {
           </div>
         )}
 
-        {}
+        {/* แท็บหน้าต่างๆ */}
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
           
           {isLoading && (
@@ -222,7 +230,6 @@ export default function App() {
         </div>
       </main>
 
-      {}
       {/* Mobile Bottom Nav */}
       <nav className="md:hidden fixed bottom-0 left-0 w-full bg-white/90 backdrop-blur-md border-t border-slate-200 flex justify-around p-2 z-40 shadow-[0_-10px_40px_rgba(0,0,0,0.08)] pb-safe rounded-t-3xl">
         <MobileNavButton icon={<BarChart3 size={24}/>} label="สรุปยอด" isActive={activeTab === 'summary'} onClick={() => { setActiveTab('summary'); setEditingRecord(null); }} />
@@ -273,18 +280,11 @@ export default function App() {
   );
 }
 
-// --- Components ---
+// --- Components ย่อย ---
 
 function NavButton({ icon, label, isActive, onClick }) {
   return (
-    <button 
-      onClick={onClick} 
-      className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold transition-all duration-300 ${
-        isActive 
-          ? 'bg-white text-violet-700 shadow-md transform scale-105' 
-          : 'text-white/90 hover:bg-white/20 hover:text-white hover:scale-105'
-      }`}
-    >
+    <button onClick={onClick} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold transition-all duration-300 ${isActive ? 'bg-white text-violet-700 shadow-md transform scale-105' : 'text-white/90 hover:bg-white/20 hover:text-white hover:scale-105'}`}>
       {icon} {label}
     </button>
   );
@@ -293,10 +293,7 @@ function NavButton({ icon, label, isActive, onClick }) {
 function MobileNavButton({ icon, label, isActive, onClick, isPrimary }) {
   if (isPrimary) {
     return (
-      <button 
-        onClick={onClick} 
-        className={`flex flex-col items-center justify-center p-2 min-w-[70px] -mt-6`}
-      >
+      <button onClick={onClick} className={`flex flex-col items-center justify-center p-2 min-w-[70px] -mt-6`}>
         <div className={`p-4 rounded-full shadow-lg text-white transition-transform transform ${isActive ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 scale-110 shadow-violet-500/40' : 'bg-slate-800 hover:scale-105'}`}>
           {icon}
         </div>
@@ -305,13 +302,8 @@ function MobileNavButton({ icon, label, isActive, onClick, isPrimary }) {
     );
   }
   return (
-    <button 
-      onClick={onClick} 
-      className={`flex flex-col items-center p-2 min-w-[70px] transition-all duration-300 ${isActive ? 'text-violet-600 scale-110' : 'text-slate-400 hover:text-violet-500'}`}
-    >
-      <div className={`${isActive ? 'bg-violet-100 p-1.5 rounded-xl' : 'p-1.5'}`}>
-        {icon}
-      </div>
+    <button onClick={onClick} className={`flex flex-col items-center p-2 min-w-[70px] transition-all duration-300 ${isActive ? 'text-violet-600 scale-110' : 'text-slate-400 hover:text-violet-500'}`}>
+      <div className={`${isActive ? 'bg-violet-100 p-1.5 rounded-xl' : 'p-1.5'}`}>{icon}</div>
       <span className="text-[11px] mt-1 font-extrabold">{label}</span>
     </button>
   );
@@ -381,7 +373,7 @@ function RecordForm({ onSubmit, initialData, onCancel, showAlert }) {
               {initialData ? <Edit className="text-white" size={24} /> : <FileText className="text-white" size={24} />}
             </div>
             <h2 className="text-xl md:text-2xl font-extrabold text-white tracking-wide drop-shadow-sm">
-              {initialData ? 'แก้ไขประวัติบันทึกบิล' : 'บันทึกบิลสินค้าสูญหาย/ชำรุด'}
+              {initialData ? 'แก้ไขประวัติบันทึกบิล' : 'บันทึกบิลสินค้าสูญหาย'}
             </h2>
           </div>
           {initialData && (
@@ -410,7 +402,7 @@ function RecordForm({ onSubmit, initialData, onCancel, showAlert }) {
       </div>
 
       {/* ส่วนเพิ่มรายการสินค้า */}
-      <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden transform transition-all hover:shadow-2xl hover:shadow-violet-200/40">
+      <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden transform transition-all">
         <div className="bg-violet-50/50 p-4 md:p-6 border-b border-violet-100 flex items-center gap-3">
           <div className="bg-violet-100 p-2 rounded-xl">
             <Package size={22} className="text-violet-600" />
@@ -462,7 +454,6 @@ function RecordForm({ onSubmit, initialData, onCancel, showAlert }) {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            {/* ทำให้เลื่อนแนวนอนได้บนมือถือ เพื่อให้เห็นครบทุกคอลัมน์ */}
             <table className="w-full text-left border-collapse min-w-[500px]">
               <thead>
                 <tr className="bg-slate-50 text-slate-500 text-[10px] md:text-xs uppercase tracking-wider border-b border-slate-200">
@@ -477,7 +468,6 @@ function RecordForm({ onSubmit, initialData, onCancel, showAlert }) {
                 {billItems.map((item, index) => (
                   <tr key={item.tempId || index} className="hover:bg-violet-50/50 transition-colors group">
                     <td className="p-3 md:p-4">
-                      {/* อนุญาตให้ตัดขึ้นบรรทัดใหม่ */}
                       <p className="font-extrabold text-slate-800 text-sm md:text-base break-words whitespace-normal">{item.productName}</p>
                     </td>
                     <td className="p-3 md:p-4 text-center text-sm md:text-base font-bold text-slate-700 bg-slate-50/50">{item.quantity}</td>
@@ -505,7 +495,6 @@ function RecordForm({ onSubmit, initialData, onCancel, showAlert }) {
         )}
       </div>
 
-      {/* ปุ่ม Submit หลัก */}
       <button 
         onClick={handleSubmitBill}
         disabled={billItems.length === 0}
@@ -520,7 +509,6 @@ function RecordForm({ onSubmit, initialData, onCancel, showAlert }) {
         {initialData ? <Check size={24} className="md:w-7 md:h-7" /> : <FileText size={24} className="md:w-7 md:h-7" />} 
         {initialData ? 'ยืนยันการแก้ไขบิลนี้' : 'ยืนยันการบันทึกบิลเข้าระบบ'}
       </button>
-
     </div>
   );
 }
@@ -555,31 +543,16 @@ function RecordList({ records, filterBranch, onEdit, onDelete }) {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 md:space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 md:gap-4 mb-4 md:mb-6">
-        <div>
-          <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">ประวัติบันทึกบิล</h2>
-          <p className="text-xs md:text-sm text-slate-500 font-medium mt-1">แสดงรายการสูญหายย้อนหลัง</p>
-        </div>
-        <div className="inline-flex items-center gap-2 bg-white px-3 md:px-4 py-1.5 md:py-2 rounded-xl border border-slate-200 shadow-sm w-fit">
-          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-          <span className="font-extrabold text-sm md:text-base text-slate-700">รวมทั้งหมด {records.length} บิล</span>
-        </div>
-      </div>
-
       {displayBranches.map(branch => {
         const branchRecords = groupedByBranch[branch];
         if (branchRecords.length === 0) return null; 
 
-        const branchTotalQty = branchRecords.reduce((sum, r) => sum + r.quantity, 0);
         const branchTotalVal = branchRecords.reduce((sum, r) => sum + r.totalValue, 0);
         const isExpanded = expandedGroups[branch];
 
         return (
           <div key={branch} className="bg-white rounded-2xl md:rounded-3xl shadow-lg shadow-slate-200/50 border border-slate-100 overflow-hidden transition-all duration-300 hover:shadow-xl">
-            <div 
-              onClick={() => toggleGroup(branch)} 
-              className={`p-4 md:p-5 cursor-pointer flex items-center justify-between transition-colors border-b ${isExpanded ? 'bg-violet-50/50 border-violet-100' : 'bg-white hover:bg-slate-50 border-transparent'}`}
-            >
+            <div onClick={() => toggleGroup(branch)} className={`p-4 md:p-5 cursor-pointer flex items-center justify-between transition-colors border-b ${isExpanded ? 'bg-violet-50/50 border-violet-100' : 'bg-white hover:bg-slate-50 border-transparent'}`}>
               <div className="flex items-center gap-3 md:gap-4">
                 <div className={`p-2.5 md:p-3 rounded-xl md:rounded-2xl ${isExpanded ? 'bg-violet-600 text-white shadow-md shadow-violet-200' : 'bg-slate-100 text-slate-500'}`}>
                   <Store size={20} className="md:w-6 md:h-6" />
@@ -622,32 +595,17 @@ function RecordList({ records, filterBranch, onEdit, onDelete }) {
                           <div className="font-bold text-slate-700 text-xs md:text-sm whitespace-nowrap">
                             {new Date(record.dateTime).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}
                           </div>
-                          <div className="text-[10px] md:text-xs font-semibold text-slate-400 mt-0.5">
-                            {new Date(record.dateTime).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.
-                          </div>
                         </td>
                         <td className="p-3 md:p-4">
                           <p className="font-extrabold text-slate-800 text-sm md:text-base break-words whitespace-normal">{record.productName}</p>
                         </td>
-                        <td className="p-3 md:p-4 text-xs md:text-sm font-semibold text-slate-600">
-                          <div className="flex items-center gap-1.5 bg-slate-50 w-fit px-2 py-1 md:px-2.5 md:py-1 rounded-lg border border-slate-100 whitespace-nowrap">
-                            <User size={12} className="text-violet-400 md:w-[14px] md:h-[14px]"/> {record.reporterName}
-                          </div>
-                        </td>
+                        <td className="p-3 md:p-4 text-xs md:text-sm font-semibold text-slate-600">{record.reporterName}</td>
+                        <td className="p-3 md:p-4 text-center"><span className="font-bold text-slate-700 text-sm md:text-base">{record.quantity}</span></td>
+                        <td className="p-3 md:p-4 text-right"><span className="font-black text-rose-600 text-sm md:text-lg">฿{record.totalValue.toLocaleString()}</span></td>
                         <td className="p-3 md:p-4 text-center">
-                          <span className="font-bold text-slate-700 text-sm md:text-base">{record.quantity}</span>
-                        </td>
-                        <td className="p-3 md:p-4 text-right">
-                          <span className="font-black text-rose-600 text-sm md:text-lg">฿{record.totalValue.toLocaleString()}</span>
-                        </td>
-                        <td className="p-3 md:p-4 text-center">
-                          <div className="flex items-center justify-center gap-1 md:gap-1.5 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => onEdit(record)} className="p-1.5 md:p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-xl transition-all shadow-sm border border-transparent hover:border-amber-100" title="แก้ไขบิล">
-                              <Edit size={16} className="md:w-[18px] md:h-[18px]" />
-                            </button>
-                            <button onClick={() => onDelete(record.id)} className="p-1.5 md:p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all shadow-sm border border-transparent hover:border-rose-100" title="ลบบิล">
-                              <Trash2 size={16} className="md:w-[18px] md:h-[18px]" />
-                            </button>
+                          <div className="flex items-center justify-center gap-1 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => onEdit(record)} className="p-1.5 md:p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-xl" title="แก้ไขบิล"><Edit size={16} /></button>
+                            <button onClick={() => onDelete(record.id)} className="p-1.5 md:p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl" title="ลบบิล"><Trash2 size={16} /></button>
                           </div>
                         </td>
                       </tr>
@@ -663,7 +621,7 @@ function RecordList({ records, filterBranch, onEdit, onDelete }) {
   );
 }
 
-// 3. Summary Component 
+// 3. Summary Component (อัปเดตตารางให้พอดีมือถือ + แสดงชื่อรายการ)
 function SummaryDashboard({ filteredRecords, filterStartDate, filterEndDate, filterBranch }) {
   
   const displayDates = useMemo(() => {
@@ -726,30 +684,22 @@ function SummaryDashboard({ filteredRecords, filterStartDate, filterEndDate, fil
       itemMap[r.productName] += r.quantity;
     });
     
-    // เปลี่ยนจากต่อ string เป็น Array แทน เพื่อให้จัดระเบียบในตารางง่ายขึ้น
+    // จัดกลุ่มรายการของหาย
     const itemsList = Object.entries(itemMap).map(([name, qty]) => ({name, qty}));
 
     return {
       name: branch,
-      incidents: branchRecords.length,
       quantity: branchRecords.reduce((sum, r) => sum + r.quantity, 0),
       value: branchRecords.reduce((sum, r) => sum + r.totalValue, 0),
-      itemsList: itemsList // ส่ง list รายการไปแสดง
+      itemsList: itemsList
     };
   }).sort((a, b) => b.value - a.value);
 
   const grandTotalQuantity = dashboardRecords.reduce((sum, r) => sum + r.quantity, 0);
   const grandTotalValue = dashboardRecords.reduce((sum, r) => sum + r.totalValue, 0);
 
-  const dateRangeText = filterStartDate && filterEndDate 
-    ? `(${new Date(filterStartDate).toLocaleDateString('th-TH', {day: 'numeric', month: 'short'})} - ${new Date(filterEndDate).toLocaleDateString('th-TH', {day: 'numeric', month: 'short', year: 'numeric'})})`
-    : filterStartDate ? `(วันที่ ${new Date(filterStartDate).toLocaleDateString('th-TH', {day: 'numeric', month: 'short', year: 'numeric'})})`
-    : filterEndDate ? `(วันที่ ${new Date(filterEndDate).toLocaleDateString('th-TH', {day: 'numeric', month: 'short', year: 'numeric'})})`
-    : '(วันนี้)';
-
   return (
     <div className="max-w-6xl mx-auto space-y-6 md:space-y-8">
-      {/* ตารางสรุปรายการสินค้า */}
       <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
         <div className="bg-gradient-to-br from-emerald-50 to-white p-4 md:p-6 border-b border-emerald-100 flex items-center gap-3">
           <div className="bg-emerald-100 p-2 md:p-2.5 rounded-xl md:rounded-2xl text-emerald-600 shadow-inner">
@@ -760,29 +710,31 @@ function SummaryDashboard({ filteredRecords, filterStartDate, filterEndDate, fil
           </div>
         </div>
         
-        <div className="overflow-x-auto">
-          {/* ปรับแต่งคลาส CSS ตรงนี้เพื่อแก้ตัวหนังสือตกขอบบนมือถือ โดยไม่ต้องเลื่อน */}
-          <table className="w-full text-left min-w-full">
+        {/* ปรับให้ตารางพอดีมือถือ (min-w-full) และบีบข้อความเมื่อแคบ */}
+        <div className="overflow-x-auto w-full">
+          <table className="w-full text-left min-w-full table-fixed">
             <thead>
               <tr className="bg-white text-slate-400 text-[10px] md:text-xs uppercase tracking-widest border-b border-slate-100">
-                <th className="p-3 md:p-5 font-extrabold w-[80px] md:w-[150px]">สาขา</th>
-                <th className="p-3 md:p-5 font-extrabold w-auto">รายละเอียดรายการ</th>
-                <th className="p-3 md:p-5 font-extrabold text-center bg-slate-50 w-[60px] md:w-[100px]">รวมชิ้น</th>
-                <th className="p-3 md:p-5 font-extrabold text-right bg-slate-50 w-[80px] md:w-[150px]">มูลค่า (บาท)</th>
+                <th className="p-3 md:p-5 font-extrabold w-[25%] md:w-[150px]">สาขา</th>
+                <th className="p-3 md:p-5 font-extrabold w-[40%] md:w-auto">รายละเอียดรายการ</th>
+                <th className="p-3 md:p-5 font-extrabold text-center bg-slate-50 w-[15%] md:w-[100px]">รวมชิ้น</th>
+                <th className="p-3 md:p-5 font-extrabold text-right bg-slate-50 w-[20%] md:w-[130px]">มูลค่า (บาท)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {branchSummaries.map((branch, index) => (
+              {branchSummaries.map((branch) => (
                 <tr key={branch.name} className="hover:bg-emerald-50/30 transition-colors">
-                  <td className="p-3 md:p-5 font-extrabold text-slate-800 flex items-center gap-1.5 md:gap-3 text-xs md:text-base break-words whitespace-normal">
-                    {branch.value > 0 && <span className="w-1.5 h-1.5 md:w-2.5 md:h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] shrink-0 hidden md:block"></span>}
-                    {branch.name}
+                  <td className="p-3 md:p-5 font-extrabold text-slate-800 text-[11px] md:text-base break-words whitespace-normal align-top">
+                    <div className="flex items-center gap-1.5 md:gap-3">
+                      {branch.value > 0 && <span className="w-1.5 h-1.5 md:w-2.5 md:h-2.5 rounded-full bg-emerald-400 shrink-0 hidden md:block"></span>}
+                      {branch.name}
+                    </div>
                   </td>
-                  <td className="p-3 md:p-5">
+                  <td className="p-3 md:p-5 align-top">
                     {branch.itemsList.length > 0 ? (
-                      <div className="flex flex-wrap gap-1.5 md:gap-2">
+                      <div className="flex flex-wrap gap-1 md:gap-2">
                         {branch.itemsList.map((item, i) => (
-                          <span key={i} className="bg-slate-100 text-slate-700 font-bold text-[10px] md:text-xs px-2 md:px-3 py-1 md:py-1.5 rounded-md md:rounded-lg border border-slate-200 break-words whitespace-normal">
+                          <span key={i} className="bg-slate-100 text-slate-700 font-bold text-[9px] md:text-xs px-1.5 py-1 md:px-3 md:py-1.5 rounded-md md:rounded-lg border border-slate-200 break-words whitespace-normal inline-block">
                             {item.name} <span className="text-slate-400">({item.qty})</span>
                           </span>
                         ))}
@@ -791,13 +743,13 @@ function SummaryDashboard({ filteredRecords, filterStartDate, filterEndDate, fil
                       <span className="text-slate-400 font-medium text-xs md:text-sm">-</span>
                     )}
                   </td>
-                  <td className="p-3 md:p-5 text-center bg-slate-50/50">
+                  <td className="p-3 md:p-5 text-center bg-slate-50/50 align-top">
                     <span className="font-black text-slate-700 text-sm md:text-lg">
                       {branch.quantity > 0 ? branch.quantity.toLocaleString() : '-'}
                     </span>
                   </td>
-                  <td className="p-3 md:p-5 text-right bg-slate-50/50">
-                    <span className={`font-black text-xs md:text-xl ${branch.value > 0 ? 'text-rose-600' : 'text-slate-300'}`}>
+                  <td className="p-3 md:p-5 text-right bg-slate-50/50 align-top">
+                    <span className={`font-black text-xs md:text-lg ${branch.value > 0 ? 'text-rose-600' : 'text-slate-300'}`}>
                       {branch.value > 0 ? `฿${branch.value.toLocaleString()}` : '-'}
                     </span>
                   </td>
@@ -812,8 +764,8 @@ function SummaryDashboard({ filteredRecords, filterStartDate, filterEndDate, fil
             <tfoot>
               <tr className="bg-gradient-to-r from-slate-50 to-slate-100 border-t-2 border-slate-200">
                 <td className="p-3 md:p-6 font-extrabold text-slate-600 text-right uppercase tracking-wider text-[10px] md:text-base" colSpan={2}>ยอดสรุปรวมทั้งหมด:</td>
-                <td className="p-3 md:p-6 text-center font-black text-slate-800 text-base md:text-2xl">{grandTotalQuantity.toLocaleString()}</td>
-                <td className="p-3 md:p-6 text-right font-black text-transparent bg-clip-text bg-gradient-to-r from-rose-500 to-orange-500 text-base md:text-3xl">฿{grandTotalValue.toLocaleString()}</td>
+                <td className="p-3 md:p-6 text-center font-black text-slate-800 text-sm md:text-2xl">{grandTotalQuantity.toLocaleString()}</td>
+                <td className="p-3 md:p-6 text-right font-black text-transparent bg-clip-text bg-gradient-to-r from-rose-500 to-orange-500 text-sm md:text-3xl">฿{grandTotalValue.toLocaleString()}</td>
               </tr>
             </tfoot>
           </table>
