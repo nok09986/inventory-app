@@ -137,7 +137,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans pb-24 md:pb-10 selection:bg-fuchsia-200">
-      {/* Header */}
+      {/* Header - Vibrant Gradient */}
       <header className="bg-gradient-to-r from-violet-700 via-fuchsia-600 to-pink-500 text-white shadow-lg sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 md:px-5 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -145,8 +145,8 @@ export default function App() {
               <Store size={26} className="text-white drop-shadow-md" />
             </div>
             <div>
-              <h1 className="text-xl md:text-2xl font-extrabold tracking-tight drop-shadow-sm">Lost & Found</h1>
-              <p className="text-[10px] md:text-xs font-medium text-white/80 tracking-wide uppercase">Inventory Tracker</p>
+              <h1 className="text-xl md:text-2xl font-extrabold tracking-tight drop-shadow-sm">บันทึกของหาย</h1>
+              <p className="text-[10px] md:text-xs font-medium text-white/80 tracking-wide uppercase">ระบบจัดการสินค้าสูญหาย</p>
             </div>
           </div>
           <nav className="hidden md:flex gap-3 bg-white/10 p-1.5 rounded-2xl backdrop-blur-md">
